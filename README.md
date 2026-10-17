@@ -4,7 +4,7 @@ A dark-themed UI prototype for a War Thunder controls editor, made with React, T
 
 ## Run
 
-Requires Node.js 20.19+ (or 22.12+), and npm.
+Requires Node.js 24.1, and npm.
 
 ```bash
 npm install
