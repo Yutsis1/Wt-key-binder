@@ -1,112 +1,83 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDownToLine, Check, ChevronDown, Command, FileCode2, Keyboard, MousePointer2, Plus, RotateCcw, Search, Settings2, ShieldAlert, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, Check, ChevronDown, Command, Keyboard, Plus, RotateCcw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { Action, Binding, Category, bindingLabel, bindingSignature, categories, initialActions, isModifier, keyLabel } from './data';
 
 const STORAGE_KEY = 'wt-bind-editor-demo-v1';
-const rows: {code:string; w?:number}[][] = [
-  ['Escape','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'].map(code=>({code})),
-  ['Backquote','Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0','Minus','Equal'].map(code=>({code})).concat([{code:'Backspace',w:2}]),
-  [{code:'Tab',w:1.5},...['KeyQ','KeyW','KeyE','KeyR','KeyT','KeyY','KeyU','KeyI','KeyO','KeyP','BracketLeft','BracketRight','Backslash'].map(code=>({code}))],
-  [{code:'CapsLock',w:1.8},...['KeyA','KeyS','KeyD','KeyF','KeyG','KeyH','KeyJ','KeyK','KeyL','Semicolon','Quote'].map(code=>({code})),{code:'Enter',w:2.2}],
-  [{code:'ShiftLeft',w:2.3},...['KeyZ','KeyX','KeyC','KeyV','KeyB','KeyN','KeyM','Comma','Period','Slash'].map(code=>({code})),{code:'ShiftRight',w:2.7}],
-  [{code:'ControlLeft',w:1.5},{code:'MetaLeft',w:1.3},{code:'AltLeft',w:1.3},{code:'Space',w:6},{code:'AltRight',w:1.3},{code:'ControlRight',w:1.5},{code:'ArrowLeft'},{code:'ArrowDown'},{code:'ArrowRight'}]
+const rows: { code: string; label?: string; width?: number }[][] = [
+  ['Escape','Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0','Minus','Equal','Backspace'].map((code,i)=>({code,label:i===0?'Esc':i===13?'Back':undefined,width:i===13?1.7:undefined})),
+  [{code:'Tab',width:1.45},...['KeyQ','KeyW','KeyE','KeyR','KeyT','KeyY','KeyU','KeyI','KeyO','KeyP','BracketLeft','BracketRight','Backslash'].map(code=>({code}))],
+  [{code:'CapsLock',label:'Caps',width:1.8},...['KeyA','KeyS','KeyD','KeyF','KeyG','KeyH','KeyJ','KeyK','KeyL','Semicolon','Quote'].map(code=>({code})),{code:'Enter',width:1.85}],
+  [{code:'ShiftLeft',label:'Shift',width:2.2},...['KeyZ','KeyX','KeyC','KeyV','KeyB','KeyN','KeyM','Comma','Period','Slash'].map(code=>({code})),{code:'ShiftRight',label:'Shift',width:2.2},{code:'ArrowUp',label:'↑'}],
+  [{code:'ControlLeft',label:'Ctrl',width:1.3},{code:'MetaLeft',label:'Win',width:1.1},{code:'AltLeft',label:'Alt',width:1.1},{code:'Space',label:'Space',width:6.4},{code:'AltRight',label:'Alt',width:1.1},{code:'ContextMenu',label:'Fn',width:1.1},{code:'ControlRight',label:'Ctrl',width:1.3},{code:'ArrowLeft',label:'←'},{code:'ArrowDown',label:'↓'},{code:'ArrowRight',label:'→'}],
 ];
+const numpad = ['NumLock','NumpadDivide','NumpadMultiply','Numpad7','Numpad8','Numpad9','Numpad4','Numpad5','Numpad6','Numpad1','Numpad2','Numpad3','Numpad0','NumpadDecimal','NumpadEnter'];
 
 function KeyboardView({ actions, selected, onKeyClick }: { actions: Action[]; selected: Action | null; onKeyClick:(code:string)=>void }) {
   const used = new Set(actions.flatMap(action=>action.bindings.map(b=>b.code)));
   const selectedKeys = new Set(selected?.bindings.map(b=>b.code) ?? []);
-  return <div className="keyboard-wrap"><div className="keyboard-inner">{rows.map((row,i)=><div className="keyboard-row" key={i}>
-    {row.map(key=><button key={key.code} title={key.code} onClick={()=>onKeyClick(key.code)} style={{flex:key.w??1}} className={`keyboard-key ${selectedKeys.has(key.code)?'selected':used.has(key.code)?'used':''}`}>
-      {key.code==='CapsLock'?'Caps':key.code==='Backspace'?'Backspace':key.code==='MetaLeft'?'Win':keyLabel(key.code)}
-    </button>)}
-  </div>)}</div></div>;
+  const renderKey = (key: {code:string;label?:string;width?:number}) => <button key={key.code} title={keyLabel(key.code)} aria-label={`Select ${keyLabel(key.code)}`} onClick={()=>onKeyClick(key.code)} className={`keyboard-key ${selectedKeys.has(key.code)?'selected':used.has(key.code)?'used':''}`} style={{'--key-width':key.width??1} as React.CSSProperties}>{key.label??keyLabel(key.code)}</button>;
+  return <div className="keyboard-wrap"><div className="keyboard-layout"><div className="keyboard-main">{rows.map((row,i)=><div className={`keyboard-row row-${i}`} key={i}>{row.map(renderKey)}</div>)}</div><div className="numpad" aria-label="Numeric keypad">{numpad.map(code=>renderKey({code,label:code==='NumLock'?'Num':code==='NumpadDivide'?'/':code==='NumpadMultiply'?'*':code==='NumpadDecimal'?'.':code==='NumpadEnter'?'Enter':keyLabel(code.replace('Numpad',''))}))}</div></div></div>;
 }
 
 function BindModal({ action, slot, onClose, onSave }: { action:Action; slot:number; onClose:()=>void; onSave:(binding:Binding)=>void }) {
   const [captured,setCaptured] = useState<Binding|null>(null);
   const [listening,setListening] = useState(true);
   const captureRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  useEffect(()=>{const timer=window.setTimeout(()=>captureRef.current?.focus(),20);return ()=>{window.clearTimeout(timer);restoreFocusRef.current?.focus();};},[]);
   useEffect(()=>{
-    const timer = window.setTimeout(()=>captureRef.current?.focus(),20);
-    return ()=>window.clearTimeout(timer);
-  },[]);
-  useEffect(()=>{
-    if (!listening) return;
-    function down(e:KeyboardEvent) {
-      if (e.code==='Escape') {e.preventDefault();onClose();return;}
-      if (isModifier(e.code)) return;
-      e.preventDefault();e.stopPropagation();
-      setCaptured({code:e.code,ctrl:e.ctrlKey,alt:e.altKey,shift:e.shiftKey,meta:e.metaKey});
-      setListening(false);
-    }
-    window.addEventListener('keydown',down,true);
-    return ()=>window.removeEventListener('keydown',down,true);
+    if(!listening)return;
+    function down(e:KeyboardEvent){if(e.code==='Escape'){e.preventDefault();onClose();return;}if(isModifier(e.code))return;e.preventDefault();e.stopPropagation();setCaptured({code:e.code,ctrl:e.ctrlKey,alt:e.altKey,shift:e.shiftKey,meta:e.metaKey});setListening(false);}
+    window.addEventListener('keydown',down,true);return()=>window.removeEventListener('keydown',down,true);
   },[listening,onClose]);
-  const [conflictText,setConflictText] = useState('');
-  function captureMouse(e:React.MouseEvent) { if (!listening) return; e.preventDefault(); e.stopPropagation(); const code=`Mouse${e.button}`; setCaptured({code,ctrl:e.ctrlKey,alt:e.altKey,shift:e.shiftKey,meta:e.metaKey});setListening(false); }
-  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget) onClose();}}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div className="modal-head"><div className="modal-icon"><Keyboard size={22}/></div><button className="icon-button" aria-label="Close" onClick={onClose}><X size={19}/></button></div>
-      <h2 id="modal-title">Assign a binding</h2><p className="muted">{action.name} · {slot >= action.bindings.length?'New binding':`Binding ${slot+1}`}</p>
-      <button ref={captureRef} className={`capture-target ${listening?'listening':''}`} onKeyDown={e=>{if(e.code==='Tab') e.stopPropagation();}} onMouseDown={captureMouse} onContextMenu={e=>e.preventDefault()}>
-        <span className="capture-symbol"><Command size={26}/></span>
-        <strong>{captured?bindingLabel(captured):'Press any key combination'}</strong>
-        <small>{listening?'Click here for mouse buttons · Esc to cancel':'Captured! Select save or record again.'}</small>
-      </button>
-      {conflictText && <div className="inline-warning"><ShieldAlert size={16}/>{conflictText}</div>}
-      <div className="modal-actions"><button className="btn secondary" onClick={onClose}>Cancel</button><button className="btn secondary" onClick={()=>{setCaptured(null);setConflictText('');setListening(true);captureRef.current?.focus();}}>Record again</button><button className="btn primary" disabled={!captured} onClick={()=>{if(captured){onSave(captured);setConflictText('');}}}><Check size={16}/> Save binding</button></div>
-    </section>
-  </div>;
+  function captureMouse(e:React.MouseEvent){if(!listening)return;e.preventDefault();e.stopPropagation();setCaptured({code:`Mouse${e.button}`,ctrl:e.ctrlKey,alt:e.altKey,shift:e.shiftKey,meta:e.metaKey});setListening(false);}
+  function trapFocus(e:React.KeyboardEvent){if(e.key!=='Tab')return;const nodes=[closeRef.current,captureRef.current,...Array.from(document.querySelectorAll<HTMLButtonElement>('.modal-actions button:not(:disabled)'))].filter((node):node is HTMLButtonElement=>!!node);const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}
+  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onKeyDown={trapFocus}>
+    <div className="modal-head"><div className="modal-icon"><Keyboard size={22}/></div><button ref={closeRef} className="icon-button" aria-label="Close" onClick={onClose}><X size={19}/></button></div>
+    <h2 id="modal-title">Assign a binding</h2><p className="muted">{action.name} · {slot>=action.bindings.length?'New binding':`Binding ${slot+1}`}</p>
+    <button ref={captureRef} className={`capture-target ${listening?'listening':''}`} onMouseDown={captureMouse} onContextMenu={e=>e.preventDefault()}><span className="capture-symbol"><Command size={26}/></span><strong>{captured?bindingLabel(captured):'Press any key combination'}</strong><small>{listening?'Click here for mouse buttons · Esc to cancel':'Captured! Select save or record again.'}</small></button>
+    <p className="capture-note">Some operating system and browser shortcuts cannot be captured.</p>
+    <div className="modal-actions"><button className="btn secondary" onClick={onClose}>Cancel</button><button className="btn secondary" onClick={()=>{setCaptured(null);setListening(true);captureRef.current?.focus();}}>Record again</button><button className="btn primary" disabled={!captured} onClick={()=>{if(captured)onSave(captured);}}><Check size={16}/> Save binding</button></div>
+  </section></div>;
 }
 
 export default function App(){
-  const [actions,setActions]=useState<Action[]>(()=>{
-    try {const saved=localStorage.getItem(STORAGE_KEY); if(saved){const parsed:unknown=JSON.parse(saved);if(Array.isArray(parsed)&&parsed.length===initialActions.length) return parsed as Action[];}}catch{/* ignore invalid storage */}
-    return initialActions;
-  });
-  const [category,setCategory]=useState<Category>('Aircraft');
+  const [actions,setActions]=useState<Action[]>(()=>{try{const saved=localStorage.getItem(STORAGE_KEY);if(saved){const parsed:unknown=JSON.parse(saved);if(Array.isArray(parsed)&&parsed.length===initialActions.length)return parsed as Action[];}}catch{/* ignore invalid storage */}return initialActions;});
+  const [category,setCategory]=useState<Category>('Ground');
   const [search,setSearch]=useState('');
-  const [selectedId,setSelectedId]=useState<string>('fire-primary');
+  const [selectedId,setSelectedId]=useState<string>('tank-range');
   const [modal,setModal]=useState<{id:string;slot:number}|null>(null);
   const [onlyConflicts,setOnlyConflicts]=useState(false);
   const [showReset,setShowReset]=useState(false);
   const [keyFilter,setKeyFilter]=useState<string|null>(null);
   useEffect(()=>{localStorage.setItem(STORAGE_KEY,JSON.stringify(actions));},[actions]);
-  const selected=actions.find(a=>a.id===selectedId)??null;
-  const conflictSignatures=useMemo(()=>{
-    const counts = new Map<string,number>();
-    for(const action of actions){ for(const sig of new Set(action.bindings.map(bindingSignature))) { const scoped=`${action.category}:${sig}`;counts.set(scoped,(counts.get(scoped)??0)+1); }}
-    return new Set([...counts.entries()].filter(([,count])=>count>1).map(([sig])=>sig));
-  },[actions]);
+  const conflictSignatures=useMemo(()=>{const counts=new Map<string,number>();for(const action of actions)for(const sig of new Set(action.bindings.map(bindingSignature))){const scoped=`${action.category}:${sig}`;counts.set(scoped,(counts.get(scoped)??0)+1);}return new Set([...counts.entries()].filter(([,count])=>count>1).map(([sig])=>sig));},[actions]);
   const hasConflict=(action:Action)=>action.bindings.some(binding=>conflictSignatures.has(`${action.category}:${bindingSignature(binding)}`));
-  const filtered=actions.filter(action=>action.category===category&&(!search||`${action.name} ${action.description} ${action.group}`.toLowerCase().includes(search.toLowerCase()))&&(!onlyConflicts||hasConflict(action))&&(!keyFilter||action.bindings.some(b=>b.code===keyFilter)));
-  const groups=[...new Set(filtered.map(action=>action.group))];
-  const counts=actions.filter(a=>a.category===category).length;
-  const conflictCount=actions.filter(a=>a.category===category&&hasConflict(a)).length;
+  const categoryActions=actions.filter(action=>action.category===category);
+  const filtered=categoryActions.filter(action=>(!search||`${action.name} ${action.description} ${action.group}`.toLowerCase().includes(search.toLowerCase()))&&(!onlyConflicts||hasConflict(action))&&(!keyFilter||action.bindings.some(b=>b.code===keyFilter)));
+  const selected=actions.find(a=>a.id===selectedId)??null;
   const currentModalAction=modal?actions.find(a=>a.id===modal.id):undefined;
-  function changeBinding(id:string,slot:number,binding:Binding) {
-    setActions(prev=>prev.map(action=>action.id===id?{...action,bindings:slot<action.bindings.length?action.bindings.map((b,i)=>i===slot?binding:b):[...action.bindings,binding]}:action));
-    setModal(null);
-  }
+  const assignedCount=categoryActions.filter(a=>a.bindings.length).length;
+  const unassignedCount=categoryActions.length-assignedCount;
+  function selectKey(code:string){setKeyFilter(prev=>prev===code?null:code);const action=categoryActions.find(a=>a.bindings.some(b=>b.code===code));if(action)setSelectedId(action.id);}
+  function changeBinding(id:string,slot:number,binding:Binding){setActions(prev=>prev.map(action=>action.id===id?{...action,bindings:slot<action.bindings.length?action.bindings.map((b,i)=>i===slot?binding:b):[...action.bindings,binding]}:action));setModal(null);}
   function removeBinding(id:string,slot:number){setActions(prev=>prev.map(action=>action.id===id?{...action,bindings:action.bindings.filter((_,i)=>i!==slot)}:action));}
   function downloadDemo(){const blob=new Blob([JSON.stringify({notice:'Demo-only JSON. Not a War Thunder .blk file.',actions},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='wt-bind-editor-demo.json';a.click();URL.revokeObjectURL(url);}
-  return <div className="shell">
-    <aside className="sidebar"><div className="brand"><div className="brand-mark"><Settings2 size={23}/></div><div><strong>WT BIND</strong><span>CONTROL EDITOR</span></div></div>
-      <div className="sidebar-label">WORKSPACE</div><nav className="nav">
-      {categories.map(c=><button key={c} className={`nav-item ${category===c?'active':''}`} onClick={()=>{setCategory(c);setKeyFilter(null);setSelectedId(actions.find(a=>a.category===c)?.id??'');}}><span className="nav-dot"/>{c}<span className="nav-count">{actions.filter(a=>a.category===c).length}</span></button>)}
-      </nav><div className="sidebar-bottom"><div className="demo-status"><span className="status-dot"/> DEMO WORKSPACE</div><p>Sample keybindings only. BLK import/export is not connected yet.</p><button className="sidebar-link" onClick={()=>setShowReset(true)}><RotateCcw size={15}/> Reset demo bindings</button></div>
+  return <div className="app-shell">
+    <header className="topbar"><a className="brand" href="#top" aria-label="WT Key Binder home"><span className="brand-mark">WT</span><span><strong>KEY BINDER</strong><small>WAR THUNDER CONTROL EDITOR</small></span></a><div className="preset"><small>ACTIVE DEMO PRESET</small><strong>Standard · {category==='Ground'?'Ground Forces':category}</strong></div><div className="top-actions"><button className="btn export" onClick={downloadDemo}><ArrowDownToLine size={17}/> Download demo JSON</button><button className="btn upload" disabled title="Configuration import is not connected yet"><Upload size={16}/> Import .blk</button><span className="avatar" aria-label="User profile">Y</span></div></header>
+    <aside className="action-sidebar"><div className="sidebar-head"><div><h2>Actions</h2><p>{category==='Ground'?'Ground vehicle':category} · {categoryActions.length} actions</p></div></div><label className="search-wrap"><Search size={17}/><input placeholder="Search actions or keys..." aria-label="Search actions or keys" value={search} onChange={e=>setSearch(e.target.value)}/>{search&&<button className="clear-search" aria-label="Clear search" onClick={()=>setSearch('')}><X size={14}/></button>}</label>
+      <div className="sidebar-filters"><button className={!onlyConflicts?'active':''} onClick={()=>setOnlyConflicts(false)}>All actions <span>{categoryActions.length}</span></button><button className={onlyConflicts?'active':''} onClick={()=>setOnlyConflicts(true)}><AlertTriangle size={13}/> Conflicts <span>{categoryActions.filter(hasConflict).length}</span></button></div>
+      <div className="action-column-label"><span>ACTION</span><span>KEY</span></div><div className="action-list">{filtered.length===0?<div className="empty">No actions match these filters.</div>:filtered.map(action=><button className={`action-row ${selectedId===action.id?'is-selected':''}`} onClick={()=>{setSelectedId(action.id);setKeyFilter(null);}} key={action.id}><span className="action-info"><strong>{action.name}{hasConflict(action)&&<AlertTriangle size={13} className="danger-icon"/>}</strong><small>{action.group}</small></span><span className="binding-preview">{action.bindings[0]?<kbd>{bindingLabel(action.bindings[0])}</kbd>:<em>—</em>}</span></button>)}</div>
+      <div className="sidebar-foot"><p>Select an action or a key to inspect its assignments.</p><span>{assignedCount} assigned · {unassignedCount} unassigned</span><button className="reset-link" onClick={()=>setShowReset(true)}><RotateCcw size={14}/> Reset demo bindings</button></div>
     </aside>
-    <main className="main"><header className="topbar"><div className="breadcrumb">Workspace <span>/</span> Control bindings <span>/</span> <b>{category}</b></div><div className="top-actions"><span className="local-pill"><span className="status-dot"/> Saved locally</span><button className="btn export" onClick={downloadDemo}><ArrowDownToLine size={16}/> Export demo JSON</button></div></header>
-    <div className="content"><div className="heading"><div><div className="eyebrow"><span className="eyebrow-line"/> INPUT CONFIGURATION</div><h1>{category} controls</h1><p>Customize your controls, discover conflicts, and visualize key assignments.</p></div><div className="header-stat"><span className="stat-num">{counts.toString().padStart(2,'0')}</span><span>ACTIONS<br/>AVAILABLE</span></div></div>
-    <div className="toolbar"><div className="search-wrap"><Search size={18}/><input placeholder="Search actions, categories, or controls..." aria-label="Search actions" value={search} onChange={e=>setSearch(e.target.value)}/><kbd>/</kbd></div><button onClick={()=>setOnlyConflicts(v=>!v)} className={`btn filter ${onlyConflicts?'filter-active':''}`}><SlidersHorizontal size={16}/> {onlyConflicts?'Showing conflicts':'All actions'} <ChevronDown size={15}/></button></div>
-    <div className="columns"><section className="panel action-panel"><div className="panel-heading"><div><h2>Control mapping</h2><p>{filtered.length} actions · {conflictCount} with conflicts</p></div><span className="panel-badge">{category.toUpperCase()}</span></div>
-    {keyFilter&&<div className="filter-chip">Key: {keyLabel(keyFilter)} <button onClick={()=>setKeyFilter(null)} aria-label="Clear key filter"><X size={14}/></button></div>}
-    <div className="action-list">{groups.length===0?<div className="empty">No actions match your filters.</div>:groups.map(group=><div key={group}><div className="group-heading">{group} <span>{filtered.filter(a=>a.group===group).length}</span></div>{filtered.filter(a=>a.group===group).map(action=><button className={`action-row ${selectedId===action.id?'is-selected':''}`} onClick={()=>setSelectedId(action.id)} key={action.id}><div className="action-info"><div className="action-name">{action.name}{hasConflict(action)&&<AlertTriangle size={14} className="danger-icon"/>}</div><span>{action.description}</span></div><div className="binding-preview">{action.bindings.length? action.bindings.map((binding,i)=><span className="mini-key" key={i}>{bindingLabel(binding)}</span>):<span className="unbound">Unbound</span>}</div></button>)}</div>)}</div></section>
-    <div className="right-col"><section className="panel detail-panel"><div className="panel-heading"><div><h2>Binding inspector</h2><p>Edit the selected control</p></div><MousePointer2 size={18} className="quiet-icon"/></div>
-    {selected?<div className="inspector-body"><div className="detail-meta"><span className="detail-category">{selected.category} / {selected.group}</span><h3>{selected.name}</h3><p>{selected.description}</p></div><div className="section-label">ASSIGNED KEYS <span>{selected.bindings.length} / ∞</span></div><div className="assigned-list">{selected.bindings.map((binding,i)=><div className="assigned" key={i}><div><span className="binding-type">BINDING {i+1}</span><strong>{bindingLabel(binding)}</strong></div><div className="assigned-buttons"><button onClick={()=>setModal({id:selected.id,slot:i})} title="Edit binding"><Settings2 size={16}/></button><button onClick={()=>removeBinding(selected.id,i)} aria-label="Remove binding" title="Remove binding"><X size={16}/></button></div></div>)}</div><button className="add-binding" onClick={()=>setModal({id:selected.id,slot:selected.bindings.length})}><Plus size={17}/> Add key binding</button>{hasConflict(selected)&&<div className="conflict-box"><AlertTriangle size={17}/><span>One or more bindings are also assigned to another {selected.category.toLowerCase()} action.</span></div>}</div>:<div className="empty">Select an action to edit.</div>}
-    </section><section className="panel keyboard-panel"><div className="panel-heading"><div><h2>Keyboard overview</h2><p>Click a key to filter assigned actions</p></div><Keyboard size={18} className="quiet-icon"/></div><KeyboardView actions={actions.filter(a=>a.category===category)} selected={selected?.category===category?selected:null} onKeyClick={code=>setKeyFilter(prev=>prev===code?null:code)}/><div className="legend"><span><i className="legend-dot selected-dot"/> Selected action</span><span><i className="legend-dot used-dot"/> In use</span><span><i className="legend-dot"/> Unassigned</span></div></section></div></div>
-    <footer className="footnote"><FileCode2 size={15}/> Frontend prototype · Browser key capture may be limited by system shortcuts · No real .blk writing yet</footer></div></main>
+    <main className="main-content" id="top"><nav className="category-tabs" aria-label="Control category">{categories.map(c=><button key={c} type="button" aria-pressed={category===c} className={category===c?'active':''} onClick={()=>{setCategory(c);setKeyFilter(null);setSelectedId(actions.find(a=>a.category===c)?.id??'');}}>{c==='Ground'?'Ground vehicles':c}</button>)}</nav>
+      <div className="page-heading"><div><p className="eyebrow">EDITOR <span>/</span> {category==='Ground'?'GROUND VEHICLE':category.toUpperCase()}</p><h1>{category==='Ground'?'Ground vehicle':category} controls</h1><p>Select a key to see its assigned action and edit the binding.</p></div><div className="save-status"><i/> Saved locally</div></div>
+      <section className="surface keyboard-card"><div className="card-heading"><div><h2>Keyboard</h2><p>Assigned actions appear in the sidebar when you select a key.</p></div><button className="btn filter" onClick={()=>setOnlyConflicts(v=>!v)}><SlidersHorizontal size={15}/>{onlyConflicts?'Conflicts':'All actions'}<ChevronDown size={14}/></button></div><KeyboardView actions={categoryActions} selected={selected?.category===category?selected:null} onKeyClick={selectKey}/><div className="legend"><span><i className="legend-selected"/> Selected</span><span><i className="legend-assigned"/> Assigned</span><span><i className="legend-empty"/> Unassigned</span><span className="key-count">{assignedCount} actions assigned</span>{keyFilter&&<button onClick={()=>setKeyFilter(null)}>Clear key selection <X size={13}/></button>}</div></section>
+      <section className="surface detail-card"><div className="detail-topline"><span>SELECTED ACTION · BINDING DETAILS</span><span className={`conflict-status ${selected&&hasConflict(selected)?'has-conflict':''}`}>{selected&&hasConflict(selected)?<><AlertTriangle size={14}/> Conflict found</>:<><i/> No conflicts found</>}</span></div>{selected?<><div className="selected-action"><div className="selected-key">{selected.bindings[0]?(selected.bindings[0].code.startsWith('Mouse')?'M'+(Number(selected.bindings[0].code.slice(5))+1):keyLabel(selected.bindings[0].code)):'—'}</div><div className="selected-copy"><h2>{selected.name}</h2><p>{selected.group} · {selected.category==='Ground'?'Ground vehicle':selected.category}</p></div></div><div className="binding-editor"><div className="binding-values">{selected.bindings.length?selected.bindings.map((binding,i)=><div className="binding-value" key={i}><span><small>ASSIGNED BINDING {i+1}</small><strong>{bindingLabel(binding)}</strong></span><span className="binding-controls"><button aria-label={`Change binding ${i+1}`} onClick={()=>setModal({id:selected.id,slot:i})}><Keyboard size={15}/></button><button aria-label={`Remove binding ${i+1}`} onClick={()=>removeBinding(selected.id,i)}><X size={15}/></button></span></div>):<div className="binding-value unbound-value"><span><small>ASSIGNED ACTION</small><strong>No key assigned</strong></span></div>}</div><button className="btn primary change-binding" onClick={()=>setModal({id:selected.id,slot:0})}>{selected.bindings.length?'Change binding':'Assign a binding'}</button></div><button className="add-binding" onClick={()=>setModal({id:selected.id,slot:selected.bindings.length})}><Plus size={15}/> Add another binding</button></>:<div className="empty detail-empty">Choose an action from the sidebar or select an assigned key.</div>}</section>
+      <footer className="footnote">Demo prototype · Browser key capture may be limited by system shortcuts · No real .blk writing yet</footer>
+    </main>
     {modal&&currentModalAction&&<BindModal key={`${modal.id}-${modal.slot}`} action={currentModalAction} slot={modal.slot} onClose={()=>setModal(null)} onSave={binding=>changeBinding(modal.id,modal.slot,binding)}/>}
-    {showReset&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setShowReset(false);}}><section className="modal confirm-modal" role="dialog" aria-modal="true"><div className="modal-head"><div className="modal-icon"><RotateCcw size={22}/></div><button className="icon-button" onClick={()=>setShowReset(false)} aria-label="Close"><X size={18}/></button></div><h2>Reset all demo bindings?</h2><p className="muted">This will restore the bundled sample configuration and discard your locally saved edits.</p><div className="modal-actions"><button className="btn secondary" onClick={()=>setShowReset(false)}>Cancel</button><button className="btn primary" onClick={()=>{setActions(initialActions);setShowReset(false);setKeyFilter(null);}}>Reset demo</button></div></section></div>}
+    {showReset&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setShowReset(false);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title"><div className="modal-head"><div className="modal-icon"><RotateCcw size={22}/></div><button className="icon-button" onClick={()=>setShowReset(false)} aria-label="Close"><X size={18}/></button></div><h2 id="reset-title">Reset all demo bindings?</h2><p className="muted">This restores the bundled sample configuration and discards your locally saved edits.</p><div className="modal-actions"><button className="btn secondary" onClick={()=>setShowReset(false)}>Cancel</button><button className="btn primary" onClick={()=>{setActions(initialActions);setShowReset(false);setKeyFilter(null);}}>Reset demo</button></div></section></div>}
   </div>;
 }
