@@ -76,6 +76,5 @@ Use FigCraft for visual design and layout work on the WT Keybinder web applicati
 - Executable paths are machine-specific; use the installed paths, not assumed locations.
 - Before editing, confirm that the FigCraft MCP tools are available and inspect the active document.
 - Use the `figcraft-design` skill for creating or modifying application designs.
-- Follow the project's white-purple tactical design language, prioritizing usability, keyboard visualization, binding tables, and responsive layouts.
 - Inspect the finished design and verify changes before implementation.
 - Do not overwrite existing designs or change application source code unless requested.
