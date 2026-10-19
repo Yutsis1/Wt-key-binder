@@ -5,15 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "tsc -b && tsc -p server/tsconfig.json && vite build",
+    "preview": "vite preview",
+    "dev:api": "node --env-file-if-exists=.env --watch server/index.ts",
+    "start:api": "node --env-file-if-exists=.env server/index.ts",
+    "test": "node --test server/*.test.ts"
   },
+  "engines": { "node": ">=24.11.0" },
   "dependencies": {
     "lucide-react": "^0.468.0",
+    "pg": "^8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "^4.3.4",

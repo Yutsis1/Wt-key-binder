@@ -1,7 +1,7 @@
 # AGENTS.md — WT Bind Editor
 
 ## Project purpose
-WT Bind Editor is a browser-based War Thunder keybinding editor. The current repository is a React 18 + TypeScript + Vite 6 **UI prototype** using illustrative controls. It is not yet a real War Thunder `.blk` editor. Prioritize reliable, lossless game-file editing over appearance-only changes when implementing file support.
+WT Bind Editor is a browser-based War Thunder keybinding editor. The editable UI is a React 19 + TypeScript + Vite 6 **prototype** using illustrative controls. A Node.js 24 API reads the supplied `.blk` export into PostgreSQL and returns raw hotkey blocks in a separate read-only frontend section. It is not yet a real War Thunder `.blk` editor. Prioritize reliable, lossless game-file editing over appearance-only changes when implementing file support.
 
 ## Repository map
 - `src/App.tsx`: application UI, category navigation, search/filtering, visual keyboard, binding capture modal, selection, state, conflicts, JSON export, and persistence.
@@ -11,15 +11,21 @@ WT Bind Editor is a browser-based War Thunder keybinding editor. The current rep
 - `index.html`: HTML entry.
 - `vite.config.ts`, `tsconfig.json`, `package.json`: build/toolchain configuration.
 - `README.md`: user-facing setup, capabilities, and limitations.
+- `server/`: read-only BLK syntax model, original-byte PostgreSQL storage, HTTP API, and Node tests.
+- `shared/keybinds.ts`: raw API types, separate from demo browser bindings.
+- `src/BackendKeybinds.tsx`, `src/api.ts`: read-only API display and response validation.
+- `compose.yaml`, `docker/backend.Dockerfile`, `docker/frontend.Dockerfile`, `docker/nginx.conf`: PostgreSQL, Node API, and frontend containers.
 
 ## Stack and commands
 - React 19, TypeScript, Vite 6, Lucide React; CSS without an installed component framework.
 - Required Node.js: `24.11+`.
 - Install: `npm install`
 - Develop: `npm run dev`
-- Type-check and production build: `npm run build` (`tsc -b && vite build`)
+- Type-check and production build: `npm run build` (frontend and backend TypeScript checks, then Vite)
+- API development: `npm run dev:api`; API start: `npm run start:api`
+- Tests: `npm test` (Node test runner); PostgreSQL integration skips without `TEST_DATABASE_URL`.
 - Preview: `npm run preview`
-- No test or lint script is currently defined. Do not claim either passed unless you add and run them.
+- No lint script is currently defined. Do not claim lint passed.
 
 ## Working rules for coding agents
 1. Inspect the relevant files and current behavior before editing. Prefer small, reviewable changes; avoid unrelated rewrites or introducing dependencies without clear value.
@@ -61,7 +67,7 @@ For `.blk` work, additionally test repeated keys/blocks, unknown settings, escap
 
 ## Prioritized roadmap
 1. Add validation for persisted demo data, component separation, accessibility improvements, and tests.
-2. Implement lossless `.blk` parsing/serialization with verified War Thunder fixtures.
+2. Expand the read-only `.blk` syntax model beyond the supplied fixture and implement verified serialization before enabling edits or export.
 3. Add a game-keycode translation layer and safe import/edit/export workflow.
 4. Expand conflict analysis, keyboard layouts, undo/redo, comparison, and controller support.
 5. Consider a Node.js service only for features requiring a backend (accounts, sharing, cloud presets); the local-file editor can remain client-side.

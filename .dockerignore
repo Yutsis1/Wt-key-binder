@@ -1,0 +1,10 @@
+node_modules
+.npm-cache
+dist
+.git
+.env
+.env.*
+*.figcraft
+.agents
+.codex
+npm-debug.log*

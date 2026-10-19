@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BackendKeybinds } from './BackendKeybinds';
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -539,6 +540,7 @@ export default function App() {
         </div>
       </aside>
       <main className="main-content" id="top">
+        <BackendKeybinds />
         <nav className="category-tabs" aria-label="Control category">
           {categories.map((c) => (
             <button
